@@ -6,3 +6,5 @@ pydantic
 mlflow
 dagshub
 dvc
+bentoml == 1.0.25
+scikit-learn

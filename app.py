@@ -1,10 +1,9 @@
-# Wine Quality Prediction with ElasticNet + MLflow
+# Wine Quality Prediction with ElasticNet + MLflow (DAGsHub-safe)
 
 import warnings
 import sys
 import logging
-from urllib.parse import urlparse
-
+import tempfile
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -14,6 +13,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import mlflow
 import mlflow.sklearn as ms
 from mlflow.models.signature import infer_signature
+import dagshub
 
 # ------------------------------
 # Logging setup
@@ -31,13 +31,22 @@ def eval_metrics(actual, pred):
     return rmse, mae, r2
 
 # ------------------------------
+# Initialize DAGsHub MLflow tracking
+# ------------------------------
+dagshub.init(  # type: ignore
+    repo_owner='rudratyagi777',
+    repo_name='fast_api_tutorials',
+    mlflow=True
+)
+
+# ------------------------------
 # Main
 # ------------------------------
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     np.random.seed(40)
 
-    # Read dataset
+    # Load dataset
     csv_url = "https://raw.githubusercontent.com/mlflow/mlflow/master/tests/datasets/winequality-red.csv"
     try:
         data = pd.read_csv(csv_url, sep=";")
@@ -49,15 +58,16 @@ if __name__ == "__main__":
     train, test = train_test_split(data, test_size=0.25, random_state=42)
     train_x = train.drop("quality", axis=1)
     test_x = test.drop("quality", axis=1)
-    train_y = train["quality"]  # 1D Series for ElasticNet
+    train_y = train["quality"]
     test_y = test["quality"]
 
-    # Hyperparameters from command-line arguments
+    # Hyperparameters
     alpha = float(sys.argv[1]) if len(sys.argv) > 1 else 0.5
     l1_ratio = float(sys.argv[2]) if len(sys.argv) > 2 else 0.5
 
     # Start MLflow run
     with mlflow.start_run():
+        # Train model
         lr = ElasticNet(alpha=alpha, l1_ratio=l1_ratio, random_state=42)
         lr.fit(train_x, train_y)
 
@@ -78,30 +88,14 @@ if __name__ == "__main__":
         mlflow.log_metric("r2", r2)
 
         # Model signature & input example
-        predictions_train = lr.predict(train_x)
-        signature = infer_signature(train_x, predictions_train)
+        signature = infer_signature(train_x, lr.predict(train_x))
 
-        # Remote tracking optional
-        # remote_server_uri = "https://dagshub.com/krishnaik06/mlflowexperiments.mlflow"
-        # mlflow.set_tracking_uri(remote_server_uri)
+        # ------------------------------
+        # DAGsHub-safe model logging
+        # ------------------------------
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            model_path = f"{tmp_dir}/elasticnet_model"
+            ms.save_model(lr, path=model_path, signature=signature, input_example=train_x.iloc[:5])
+            mlflow.log_artifacts(model_path, artifact_path="ElasticnetWineModel")
 
-        tracking_url_type_store = urlparse(mlflow.get_tracking_uri()).scheme
-
-        # Log model
-        if tracking_url_type_store != "file":
-            # Register model on remote server
-            ms.log_model(
-                lr,
-                name="ElasticnetWineModel",
-                registered_model_name="ElasticnetWineModel",
-                signature=signature,
-                input_example=train_x.iloc[:5]
-            )
-        else:
-            # Local logging
-            ms.log_model(
-                lr,
-                name="ElasticnetWineModel",
-                signature=signature,
-                input_example=train_x.iloc[:5]
-            )
+    print("✅ Model, metrics, and parameters logged successfully to DAGsHub MLflow!")

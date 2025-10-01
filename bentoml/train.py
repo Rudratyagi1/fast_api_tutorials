@@ -5,7 +5,8 @@ from sklearn import datasets
 
 # Load training data set
 iris = datasets.load_iris()
-X, y = iris.data, iris.target
+X, y = iris.data, iris.target   #type: ignore
+
 
 # Train the model
 clf = svm.SVC(gamma='scale')

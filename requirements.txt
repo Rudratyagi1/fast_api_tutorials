@@ -3,3 +3,4 @@ uvicorn
 pydantic
 pip==24.0
 pydantic
+mlflow
